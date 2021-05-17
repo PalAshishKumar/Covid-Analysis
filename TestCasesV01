@@ -1,0 +1,165 @@
+--To View the raw data of Covid Deaths Table for data cleaning
+
+Select *
+From TestCases.dbo.CovidDeaths
+Order by 3,4
+
+
+--To View the raw data of Covid Vaccinations Table for data cleaning
+
+Select *
+From TestCases.dbo.CovidVaccinations
+Order by 3,4
+
+
+--Looking at Total Cases vs Total Deaths
+
+SELECT location, date, total_cases, total_deaths, (total_deaths/total_cases)*100 As DeathPercentage
+FROM TestCases.dbo.CovidDeaths
+WHERE location LIKE '%India%'
+ORDER BY 1,2
+
+
+--Looking at the total Cases vs Populations
+--Shows what percentage of Population got Covid
+
+SELECT location, date, total_cases, population, (total_cases/population)*100 As PercentagePopulationInfected
+FROM TestCases.dbo.CovidDeaths
+WHERE location LIKE '%India%'
+ORDER BY 1,2
+
+
+--Looking at Countries with Highest Infection Rate compared to Population
+
+SELECT location, population, MAX(total_cases) As HighestIfectionCount, MAX((total_cases/population))*100 As MaxPercentagePopulationInfected
+FROM TestCases.dbo.CovidDeaths
+--WHERE location LIKE '%India%'
+GROUP BY location, population
+ORDER BY 4 desc
+
+--Looking at countries with Highest Death Count per Population
+
+SELECT location, MAX(CAST(total_deaths AS INT)) As TotalDeathCount
+FROM TestCases.dbo.CovidDeaths
+--WHERE location LIKE '%India%'
+WHERE continent IS NOT NULL
+GROUP BY location
+ORDER BY 2 desc
+
+
+--Break things down by Continent
+
+SELECT location, MAX(CAST(total_deaths AS INT)) As TotalDeathCount
+FROM TestCases.dbo.CovidDeaths
+--WHERE location LIKE '%India%'
+WHERE continent IS NULL
+AND location NOT IN('Upper middle income','High income','Lower middle income','Low income')
+GROUP BY location
+ORDER BY 2 desc
+
+
+--Global Numbers
+--Total Number as Whole
+
+SELECT   SUM(new_cases) as TotalCases, SUM(CAST(new_deaths as INT)) as TotalDeaths, SUM(CAST(new_deaths as INT))/SUM(new_cases)*100 As DeathPercentage
+FROM TestCases.dbo.CovidDeaths
+--WHERE location LIKE '%India%'
+WHERE continent IS NOT NULL
+--GROUP BY date
+ORDER BY 1
+
+
+--Total Cases by dates
+
+SELECT  date, SUM(new_cases) as TotalCases, SUM(CAST(new_deaths as INT)) as TotalDeaths, SUM(CAST(new_deaths as INT))/SUM(new_cases)*100 As DeathPercentage
+FROM TestCases.dbo.CovidDeaths
+--WHERE location LIKE '%India%'
+WHERE continent IS NOT NULL
+GROUP BY date
+ORDER BY 1
+
+
+--Total Population vs Vaccinations
+
+SELECT 
+	Death.continent, 
+	Death.location, 
+	Death.date, 
+	Death.population, 
+	Vaccine.new_vaccinations,
+	SUM(CAST(Vaccine.new_vaccinations as INT)) OVER (PARTITION BY Death.location ORDER BY Death.location,Death.date) as TotalVaccinatedPopulationPerDay
+FROM TestCases.dbo.CovidDeaths as Death
+JOIN TestCases.dbo.CovidVaccinations as Vaccine
+	ON Death.location = Vaccine.location
+	AND Death.date = Vaccine.date
+WHERE Death.continent IS NOT NULL
+	--AND Death.location LIKE '%India%'
+ORDER BY 2,3
+
+--USE CTE for Future USE
+
+WITH PopVac (continent, location, date, population, new_vaccinations, TotalVaccinatedPopulationPerDay) 
+AS (
+	SELECT 
+		Death.continent, 
+		Death.location, 
+		Death.date, 
+		Death.population, 
+		Vaccine.new_vaccinations,
+		SUM(CAST(Vaccine.new_vaccinations as INT)) OVER (PARTITION BY Death.location ORDER BY Death.location,Death.date) as TotalVaccinatedPopulationPerDay
+	FROM TestCases.dbo.CovidDeaths as Death
+	JOIN TestCases.dbo.CovidVaccinations as Vaccine
+		ON Death.location = Vaccine.location
+		AND Death.date = Vaccine.date
+	WHERE Death.continent IS NOT NULL
+		--AND Death.location LIKE '%India%'
+	)
+SELECT *, (TotalVaccinatedPopulationPerDay/population)*100 as RollingVaccinatedPercent
+FROM PopVac
+
+
+--Or Can USE Temp Table for better visualisation and ease for better visualisation and analysis
+DROP Table IF EXISTS #PercentPopulationVaccinated
+CREATE Table #PercentPopulationVaccinated
+(
+continent nvarchar(255),
+location nvarchar(255),
+date datetime,
+population numeric,
+new_vaccinations numeric,
+TotalVaccinatedPopulationPerDay numeric
+)
+
+INSERT INTO #PercentPopulationVaccinated
+SELECT 
+	Death.continent, 
+	Death.location, 
+	Death.date, 
+	Death.population, 
+	Vaccine.new_vaccinations,
+	SUM(CAST(Vaccine.new_vaccinations as INT)) OVER (PARTITION BY Death.location ORDER BY Death.location,Death.date) as TotalVaccinatedPopulationPerDay
+FROM TestCases.dbo.CovidDeaths as Death
+JOIN TestCases.dbo.CovidVaccinations as Vaccine
+	ON Death.location = Vaccine.location
+	AND Death.date = Vaccine.date
+WHERE Death.continent IS NOT NULL
+	--AND Death.location LIKE '%India%'
+
+SELECT *, (TotalVaccinatedPopulationPerDay/population)*100 as RollingVaccinatedPercent
+FROM #PercentPopulationVaccinated
+
+
+--Creating view to store data for later visulization
+
+CREATE VIEW GlobalTotalDeaths AS
+SELECT location, MAX(CAST(total_deaths AS INT)) As TotalDeathCount
+FROM TestCases.dbo.CovidDeaths
+--WHERE location LIKE '%India%'
+WHERE continent IS NULL
+AND location NOT IN('Upper middle income','High income','Lower middle income','Low income')
+GROUP BY location
+--ORDER BY 2 desc
+
+
+SELECT *
+FROM GlobalTotalDeaths
